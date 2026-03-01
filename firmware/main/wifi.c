@@ -102,7 +102,12 @@ esp_err_t wifi_init_sta(void)
     if (!s_wifi_started) {
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    }
 
+    /* Register event handlers if not yet registered (may have been skipped
+     * when wifi_init_ap() was called first, which sets s_wifi_started but
+     * does not register STA/IP handlers). */
+    if (s_wifi_event_instance == NULL) {
         ESP_ERROR_CHECK(esp_event_handler_instance_register(
             WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &s_wifi_event_instance));
         ESP_ERROR_CHECK(esp_event_handler_instance_register(

@@ -165,9 +165,8 @@ static fetch_result_t fetch_metrics(const uptime_instance_t *inst)
         int status_code = esp_http_client_get_status_code(client);
         if (status_code == 200) {
             result.api_reachable = true;
+            result.api_key_valid = true;
             parse_metrics(buf, http_buf.len, &result);
-            /* If we got monitors, key was valid */
-            result.api_key_valid = (result.monitors_up + result.monitors_down) > 0;
         } else if (status_code == 401) {
             result.api_reachable = true;
             result.api_key_valid = false;
@@ -243,6 +242,11 @@ static void monitor_task(void *arg)
 
         if (count == 0) {
             ESP_LOGI(TAG, "No instances configured, skipping poll");
+            xSemaphoreTake(s_mutex, portMAX_DELAY);
+            s_result_count = 0;
+            memset(s_results, 0, sizeof(s_results));
+            s_status = MONITOR_STATUS_UNKNOWN;
+            xSemaphoreGive(s_mutex);
         } else {
             ESP_LOGI(TAG, "Polling %d instance(s)...", count);
 
