@@ -1,0 +1,35 @@
+# ESP-IDF build artifacts
+firmware/build/
+firmware/dependencies.lock
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
+*.sig
+
+# Node / webapp
+webapp/node_modules/
+webapp/dist/
+webapp/.vite/
+webapp/public/firmware/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+*.egg
+
+# IDE
+.idea/
+*.iml

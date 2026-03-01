@@ -1,0 +1,31 @@
+# Target: ESP32 (first model)
+CONFIG_IDF_TARGET="esp32"
+
+# Flash size (4 MB)
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# WiFi
+CONFIG_ESP_WIFI_SSID=""
+CONFIG_ESP_WIFI_PASSWORD=""
+
+# HTTP server: wildcard URI matching, larger header buffer for CORS browser requests
+CONFIG_HTTPD_URI_MATCH_WILDCARD=y
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+
+# mDNS
+CONFIG_MDNS_MAX_SERVICES=4
+
+# lwIP: enable broadcast
+CONFIG_LWIP_SO_BROADCAST=y
+
+# HTTP client with HTTPS support
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+
+# Allow insecure TLS (Uptime Kuma often uses self-signed certs)
+CONFIG_ESP_TLS_INSECURE=y
+CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
