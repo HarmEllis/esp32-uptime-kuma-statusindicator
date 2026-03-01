@@ -55,6 +55,7 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
         ESP_LOGI(TAG, "Connected with IP: %s", s_ip_str);
         s_retry_count = 0;
         s_connected = true;
+        esp_wifi_set_ps(WIFI_PS_NONE);
         xEventGroupSetBits(s_wifi_events, WIFI_CONNECTED_BIT);
     }
 }
@@ -115,6 +116,7 @@ esp_err_t wifi_init_sta(void)
     }
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    s_ap_active = false;
 
     wifi_config_t wifi_config = {0};
     strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
@@ -153,7 +155,6 @@ esp_err_t wifi_init_sta(void)
         WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(WIFI_CONNECT_TIMEOUT_MS));
 
     if (bits & WIFI_CONNECTED_BIT) {
-        esp_wifi_set_ps(WIFI_PS_NONE);
         return ESP_OK;
     }
     if (bits == 0) {

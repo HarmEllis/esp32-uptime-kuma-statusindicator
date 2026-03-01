@@ -9,6 +9,7 @@
 #include "freertos/semphr.h"
 #include <string.h>
 #include <stdlib.h>
+#include "mbedtls/base64.h"
 
 static const char *TAG = "monitor";
 
@@ -155,9 +156,26 @@ static fetch_result_t fetch_metrics(const uptime_instance_t *inst)
         return result;
     }
 
-    /* Uptime Kuma uses password-only Basic Auth (empty username, apikey as password) */
-    esp_http_client_set_username(client, "");
-    esp_http_client_set_password(client, inst->apikey);
+    /* Uptime Kuma uses password-only Basic Auth (empty username, apikey as password).
+     * Build the Authorization header manually because the ESP HTTP client may not
+     * have built-in Basic auth support enabled. Credentials = ":<apikey>". */
+    {
+        char creds[INSTANCE_APIKEY_LEN + 2]; /* ":" + apikey + NUL */
+        snprintf(creds, sizeof(creds), ":%s", inst->apikey);
+        size_t creds_len = strlen(creds);
+
+        size_t b64_len = 0;
+        mbedtls_base64_encode(NULL, 0, &b64_len, (const unsigned char *)creds, creds_len);
+
+        char auth_header[7 + b64_len + 1]; /* "Basic " + base64 + NUL */
+        memcpy(auth_header, "Basic ", 6);
+        size_t written = 0;
+        mbedtls_base64_encode((unsigned char *)auth_header + 6, b64_len + 1, &written,
+                              (const unsigned char *)creds, creds_len);
+        auth_header[6 + written] = '\0';
+
+        esp_http_client_set_header(client, "Authorization", auth_header);
+    }
     esp_http_client_set_method(client, HTTP_METHOD_GET);
 
     esp_err_t err = esp_http_client_perform(client);
@@ -206,7 +224,11 @@ static void update_led_state(void)
     }
 
     if (!has_instances) {
-        /* No instances configured: stay at connecting/startup LED */
+        /* No instances configured: only reset LED if WiFi is connected and
+         * not in AP mode — preserve error/AP LED states set elsewhere. */
+        if (!wifi_is_ap_active() && wifi_is_connected()) {
+            led_set_state(LED_CONNECTING);
+        }
         return;
     }
 
@@ -231,11 +253,6 @@ static void monitor_task(void *arg)
     vTaskDelay(pdMS_TO_TICKS(FIRST_POLL_DELAY_S * 1000));
 
     while (1) {
-        if (!wifi_is_connected()) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            continue;
-        }
-
         uptime_instance_t instances[MAX_INSTANCES];
         int count = 0;
         storage_get_instances(instances, &count);
@@ -247,6 +264,10 @@ static void monitor_task(void *arg)
             memset(s_results, 0, sizeof(s_results));
             s_status = MONITOR_STATUS_UNKNOWN;
             xSemaphoreGive(s_mutex);
+            update_led_state();
+        } else if (!wifi_is_connected()) {
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            continue;
         } else {
             ESP_LOGI(TAG, "Polling %d instance(s)...", count);
 

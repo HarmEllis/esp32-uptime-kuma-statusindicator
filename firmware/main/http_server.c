@@ -260,6 +260,8 @@ static esp_err_t instances_post_handler(httpd_req_t *req)
     if (err == ESP_ERR_NO_MEM) return send_error(req, 400, "Maximum instances reached");
     if (err != ESP_OK) return send_error(req, 500, "Failed to save instance");
 
+    monitor_trigger_poll();
+
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddStringToObject(resp, "status", "created");
     return send_json(req, 201, resp);
@@ -306,6 +308,8 @@ static esp_err_t instances_put_handler(httpd_req_t *req)
     if (err == ESP_ERR_INVALID_ARG) return send_error(req, 404, "Instance not found");
     if (err != ESP_OK) return send_error(req, 500, "Failed to update instance");
 
+    monitor_trigger_poll();
+
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddStringToObject(resp, "status", "updated");
     return send_json(req, 200, resp);
@@ -323,6 +327,8 @@ static esp_err_t instances_delete_handler(httpd_req_t *req)
     esp_err_t err = storage_delete_instance(id);
     if (err == ESP_ERR_INVALID_ARG) return send_error(req, 404, "Instance not found");
     if (err != ESP_OK) return send_error(req, 500, "Failed to delete instance");
+
+    monitor_trigger_poll();
 
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddStringToObject(resp, "status", "deleted");
@@ -497,6 +503,8 @@ esp_err_t http_server_start(void)
     config.max_uri_handlers = 24;
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.stack_size = 8192;
+    config.max_open_sockets = 4;
+    config.lru_purge_enable = true;
 
     esp_err_t err = httpd_start(&s_server, &config);
     if (err != ESP_OK) {
