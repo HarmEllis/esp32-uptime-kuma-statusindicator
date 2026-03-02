@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esp_err.h"
+#include <stdint.h>
 
 typedef enum {
     LED_STARTUP,          /* all off */
@@ -22,3 +23,8 @@ void led_set_state(led_state_t state);
 
 /** Get the current LED state */
 led_state_t led_get_state(void);
+
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+void led_set_brightness(uint8_t percent); /* 0–100 */
+uint8_t led_get_brightness(void);
+#endif

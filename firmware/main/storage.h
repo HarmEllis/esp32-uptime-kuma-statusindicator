@@ -52,3 +52,8 @@ esp_err_t storage_get_hostname(char *hostname, size_t len);
 
 /** Erase all NVS data (factory reset) */
 esp_err_t storage_factory_reset(void);
+
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+esp_err_t storage_get_led_brightness(uint8_t *brightness);
+esp_err_t storage_set_led_brightness(uint8_t brightness);
+#endif

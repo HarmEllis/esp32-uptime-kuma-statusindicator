@@ -174,6 +174,14 @@ export async function updatePollInterval(interval: number): Promise<void> {
   });
 }
 
+export async function updateLedBrightness(brightness: number): Promise<void> {
+  await apiFetch("/api/v1/settings/led-brightness", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ brightness }),
+  });
+}
+
 // System
 export async function rebootDevice(): Promise<void> {
   await apiFetch("/api/v1/system/reboot", { method: "POST" });

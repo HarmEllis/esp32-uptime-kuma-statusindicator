@@ -381,8 +381,48 @@ static esp_err_t settings_get_handler(httpd_req_t *req)
     cJSON_AddStringToObject(j, "wifi_ssid", ssid);
     cJSON_AddStringToObject(j, "ip", ip);
     cJSON_AddNumberToObject(j, "poll_interval", poll_iv);
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+    uint8_t brightness = 30;
+    storage_get_led_brightness(&brightness);
+    cJSON_AddNumberToObject(j, "led_brightness", brightness);
+#endif
     return send_json(req, 200, j);
 }
+
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+static esp_err_t settings_led_brightness_handler(httpd_req_t *req)
+{
+    if (!auth_check_request(req)) return send_error(req, 401, "Unauthorized");
+
+    char *body = read_body(req);
+    if (!body) return send_error(req, 400, "Invalid body");
+
+    cJSON *j = cJSON_Parse(body);
+    free(body);
+    if (!j) return send_error(req, 400, "Invalid JSON");
+
+    cJSON *brightness_item = cJSON_GetObjectItem(j, "brightness");
+    if (!cJSON_IsNumber(brightness_item)) {
+        cJSON_Delete(j);
+        return send_error(req, 400, "Missing brightness");
+    }
+
+    int brightness = (int)cJSON_GetNumberValue(brightness_item);
+    cJSON_Delete(j);
+
+    if (brightness < 1 || brightness > 100) {
+        return send_error(req, 400, "brightness must be 1-100");
+    }
+
+    esp_err_t err = storage_set_led_brightness((uint8_t)brightness);
+    if (err != ESP_OK) return send_error(req, 500, "Failed to persist brightness");
+    led_set_brightness((uint8_t)brightness);
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddStringToObject(resp, "status", "updated");
+    return send_json(req, 200, resp);
+}
+#endif
 
 static esp_err_t settings_wifi_handler(httpd_req_t *req)
 {
@@ -555,6 +595,14 @@ esp_err_t http_server_start(void)
     httpd_register_uri_handler(s_server, &settings_psk);
     httpd_uri_t settings_poll = { .uri = "/api/v1/settings/poll", .method = HTTP_PUT, .handler = settings_poll_handler };
     httpd_register_uri_handler(s_server, &settings_poll);
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+    httpd_uri_t settings_brightness = {
+        .uri = "/api/v1/settings/led-brightness",
+        .method = HTTP_PUT,
+        .handler = settings_led_brightness_handler
+    };
+    httpd_register_uri_handler(s_server, &settings_brightness);
+#endif
 
     /* System */
     httpd_uri_t sys_reboot = { .uri = "/api/v1/system/reboot", .method = HTTP_POST, .handler = system_reboot_handler };

@@ -21,6 +21,7 @@ export interface DeviceSettings {
   wifi_ssid: string;
   ip: string;
   poll_interval: number;
+  led_brightness?: number;  // 0–100, only present on ESP32-S3
 }
 
 export interface MonitorInstanceStatus {

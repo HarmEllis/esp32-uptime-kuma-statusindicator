@@ -17,6 +17,7 @@ static const char *TAG = "storage";
 #define KEY_POLL_IV      "poll_iv"
 #define KEY_PSK          "psk"
 #define KEY_HOSTNAME     "hostname"
+#define KEY_LED_BRIGHTNESS "led_bright"
 
 #define DEFAULT_POLL_INTERVAL_S 60
 
@@ -288,3 +289,45 @@ esp_err_t storage_factory_reset(void)
     if (err != ESP_OK) return err;
     return nvs_flash_init();
 }
+
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+
+esp_err_t storage_get_led_brightness(uint8_t *brightness)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_CONFIG_NS, NVS_READONLY, &h);
+    if (err != ESP_OK) {
+        *brightness = 30;
+        return ESP_OK;
+    }
+
+    err = nvs_get_u8(h, KEY_LED_BRIGHTNESS, brightness);
+    nvs_close(h);
+
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        *brightness = 30;
+        return ESP_OK;
+    }
+    if (err == ESP_OK) {
+        if (*brightness < 1)   *brightness = 1;
+        if (*brightness > 100) *brightness = 100;
+    }
+    return err;
+}
+
+esp_err_t storage_set_led_brightness(uint8_t brightness)
+{
+    if (brightness < 1 || brightness > 100) return ESP_ERR_INVALID_ARG;
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_CONFIG_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+
+    err = nvs_set_u8(h, KEY_LED_BRIGHTNESS, brightness);
+    if (err == ESP_OK) err = nvs_commit(h);
+
+    nvs_close(h);
+    return err;
+}
+
+#endif /* CONFIG_IDF_TARGET_ESP32S3 */

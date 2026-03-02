@@ -1,7 +1,7 @@
 import { useState, useEffect } from "preact/hooks";
 import { RoutableProps } from "preact-router";
 import { PageHeader } from "./PageHeader";
-import { getSettings, getHealth, updateWifi, updatePsk, updatePollInterval, rebootDevice } from "../utils/api";
+import { getSettings, getHealth, updateWifi, updatePsk, updatePollInterval, rebootDevice, updateLedBrightness } from "../utils/api";
 import { clearToken, setEndpoint, getEndpoint } from "../utils/storage";
 import { nav } from "../utils/nav";
 import type { DeviceSettings, DeviceHealth } from "../types/api";
@@ -22,6 +22,9 @@ export function Settings(_props: RoutableProps) {
   // Poll interval form
   const [pollInterval, setPollIntervalValue] = useState("");
 
+  // LED brightness form (ESP32-S3 only)
+  const [brightness, setBrightnessValue] = useState("");
+
   // Reboot confirm
   const [rebootConfirm, setRebootConfirm] = useState(false);
   const [rebooting, setRebooting] = useState(false);
@@ -33,6 +36,7 @@ export function Settings(_props: RoutableProps) {
         setSettings(s);
         setHealth(h);
         setPollIntervalValue(String(s.poll_interval));
+        if (s.led_brightness !== undefined) setBrightnessValue(String(s.led_brightness));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load settings");
       }
@@ -81,6 +85,22 @@ export function Settings(_props: RoutableProps) {
       setSuccess("Poll interval updated");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update poll interval");
+    }
+  };
+
+  const handleBrightnessUpdate = async () => {
+    const val = parseInt(brightness, 10);
+    if (isNaN(val) || val < 1 || val > 100) {
+      setError("Brightness must be 1–100");
+      return;
+    }
+    setError("");
+    setSuccess("");
+    try {
+      await updateLedBrightness(val);
+      setSuccess("LED brightness updated");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update brightness");
     }
   };
 
@@ -189,6 +209,22 @@ export function Settings(_props: RoutableProps) {
           </button>
         </div>
       </div>
+
+      {/* LED Brightness (ESP32-S3 only) */}
+      {settings?.led_brightness !== undefined && (
+        <div style={{ padding: "1rem", background: "#1e293b", borderRadius: "8px", marginBottom: "1rem" }}>
+          <h3 style={{ marginTop: 0, fontSize: "1rem" }}>LED Brightness</h3>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <input type="range" min="1" max="100" value={brightness}
+              onInput={e => setBrightnessValue((e.target as HTMLInputElement).value)}
+              style={{ flex: 1 }} />
+            <span style={{ color: "#e2e8f0", minWidth: "3ch" }}>{brightness}%</span>
+            <button onClick={handleBrightnessUpdate} style={{ ...btnStyle, background: "#3b82f6" }}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Reboot device */}
       <div style={{ padding: "1rem", background: "#1e293b", borderRadius: "8px", marginBottom: "1rem" }}>

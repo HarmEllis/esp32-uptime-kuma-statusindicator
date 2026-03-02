@@ -25,15 +25,18 @@ led_state_t led_get_state(void)
 
 #include "led_strip.h"
 #include "driver/gpio.h"
+#include "storage.h"
 
 #define RGB_LED_GPIO GPIO_NUM_48
 
 static led_strip_handle_t s_strip = NULL;
+static volatile uint8_t s_brightness = 30;
 
 static void set_rgb(uint8_t r, uint8_t g, uint8_t b)
 {
     if (!s_strip) return;
-    led_strip_set_pixel(s_strip, 0, r, g, b);
+    uint8_t br = s_brightness;   /* read once to avoid per-channel tearing */
+    led_strip_set_pixel(s_strip, 0, r*br/100, g*br/100, b*br/100);
     led_strip_refresh(s_strip);
 }
 
@@ -50,31 +53,31 @@ static void led_task(void *arg)
             break;
 
         case LED_CONNECTING:
-            set_rgb(0, 0, 80);
+            set_rgb(0, 0, 255);
             vTaskDelay(pdMS_TO_TICKS(500));
             set_rgb(0, 0, 0);
             vTaskDelay(pdMS_TO_TICKS(500));
             break;
 
         case LED_AP_MODE:
-            set_rgb(0, 0, 80);
+            set_rgb(0, 0, 255);
             vTaskDelay(pdMS_TO_TICKS(250));
             set_rgb(0, 0, 0);
             vTaskDelay(pdMS_TO_TICKS(250));
             break;
 
         case LED_ALL_UP:
-            set_rgb(0, 80, 0);
+            set_rgb(0, 255, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
             break;
 
         case LED_MONITORS_DOWN:
-            set_rgb(80, 0, 0);
+            set_rgb(255, 0, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
             break;
 
         case LED_ERROR_BLINK:
-            set_rgb(80, 0, 0);
+            set_rgb(255, 0, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
             set_rgb(0, 0, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -83,7 +86,7 @@ static void led_task(void *arg)
         case LED_IDENTIFY:
             /* Triple flash white, then restore previous state */
             for (int i = 0; i < 3; i++) {
-                set_rgb(80, 80, 80);
+                set_rgb(255, 255, 255);
                 vTaskDelay(pdMS_TO_TICKS(100));
                 set_rgb(0, 0, 0);
                 vTaskDelay(pdMS_TO_TICKS(100));
@@ -92,18 +95,30 @@ static void led_task(void *arg)
             break;
 
         case LED_RESET_WARN:
-            set_rgb(80, 80, 0);
+            set_rgb(255, 255, 0);
             vTaskDelay(pdMS_TO_TICKS(50));
             set_rgb(0, 0, 0);
             vTaskDelay(pdMS_TO_TICKS(50));
             break;
 
         case LED_RESET_CONFIRM:
-            set_rgb(80, 80, 80);
+            set_rgb(255, 255, 255);
             vTaskDelay(pdMS_TO_TICKS(100));
             break;
         }
     }
+}
+
+void led_set_brightness(uint8_t percent)
+{
+    if (percent < 1)   percent = 1;
+    if (percent > 100) percent = 100;
+    s_brightness = percent;
+}
+
+uint8_t led_get_brightness(void)
+{
+    return s_brightness;
 }
 
 /* ------------------------------------------------------------------ */
@@ -220,6 +235,9 @@ esp_err_t led_init(void)
         ESP_LOGE("led", "Failed to init led_strip: %s", esp_err_to_name(err));
         return err;
     }
+    uint8_t br = 30;
+    storage_get_led_brightness(&br);
+    s_brightness = br;
     /* RMT driver uses more stack than plain GPIO — allocate 4096 bytes */
     BaseType_t ret = xTaskCreate(led_task, "led", 4096, NULL, 2, NULL);
 #else
