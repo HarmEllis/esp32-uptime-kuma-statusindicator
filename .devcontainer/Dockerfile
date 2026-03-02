@@ -60,11 +60,11 @@ RUN git clone --recursive \
     && git config --system --add safe.directory ${IDF_PATH}
 
 # --------------------------------------------------------------------------
-# 3. Install ESP-IDF toolchains (ESP32 only)
+# 3. Install ESP-IDF toolchains (ESP32 and ESP32-S3)
 # --------------------------------------------------------------------------
 RUN : \
     && update-ca-certificates --fresh \
-    && ${IDF_PATH}/tools/idf_tools.py --non-interactive install required --targets=esp32 \
+    && ${IDF_PATH}/tools/idf_tools.py --non-interactive install required --targets=esp32,esp32s3 \
     && ${IDF_PATH}/tools/idf_tools.py --non-interactive install cmake \
     && ${IDF_PATH}/tools/idf_tools.py --non-interactive install-python-env \
     && rm -rf ${IDF_TOOLS_PATH}/dist \

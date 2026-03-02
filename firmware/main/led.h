@@ -14,7 +14,7 @@ typedef enum {
     LED_RESET_CONFIRM,    /* all solid (reset confirmed, about to reboot) */
 } led_state_t;
 
-/** Start the LED task (GREEN=22, RED=23, BUILTIN=2) */
+/** Start the LED task (ESP32: GREEN=22, RED=23, BUILTIN=2; ESP32-S3: WS2812 on GPIO 48) */
 esp_err_t led_init(void);
 
 /** Set the LED state */

@@ -53,8 +53,8 @@ export function InstanceManager(_props: RoutableProps) {
     if (!editing) return;
     const { id, state } = editing;
 
-    if (!state.name.trim() || !state.url.trim()) {
-      setError("Name and URL are required");
+    if (!state.name.trim() || !state.url.trim() || !state.apikey.trim()) {
+      setError("Name, URL, and API key are required");
       return;
     }
 
@@ -106,16 +106,29 @@ export function InstanceManager(_props: RoutableProps) {
           setError("Invalid config file: missing instances array");
           return;
         }
+        // Validate all rows before touching existing state
+        const parsed = data.instances.map((raw, i) => ({
+          uuid: raw.uuid ?? raw.id ?? uuidv4(),
+          name: (raw.name ?? "").trim(),
+          url: (raw.url ?? raw.endpoint ?? "").trim(),
+          apikey: (raw.apikey ?? "").trim(),
+          _index: i,
+        }));
+        const invalid = parsed.filter((r) => !r.name || !r.url || !r.apikey);
+        if (invalid.length > 0) {
+          setError(
+            `Import aborted: row(s) ${invalid.map((r) => r._index + 1).join(", ")} missing name, URL, or API key`
+          );
+          return;
+        }
         setLoading(true);
         // Delete all existing instances (in reverse order)
         for (let i = instances.length - 1; i >= 0; i--) {
           await deleteInstance(i);
         }
         // Add each imported instance
-        for (const raw of data.instances) {
-          const uuid = raw.uuid ?? raw.id ?? uuidv4();
-          const url = raw.url ?? raw.endpoint ?? "";
-          await addInstance({ uuid, name: raw.name ?? "", url, apikey: raw.apikey ?? "" });
+        for (const row of parsed) {
+          await addInstance({ uuid: row.uuid, name: row.name, url: row.url, apikey: row.apikey });
         }
         setSuccess(`Imported ${data.instances.length} instance(s)`);
         await load();
@@ -215,7 +228,7 @@ export function InstanceManager(_props: RoutableProps) {
             />
             <input
               type="password"
-              placeholder="API Key (optional)"
+              placeholder="API Key"
               value={editing.state.apikey}
               onInput={(e) => setEditing({ ...editing, state: { ...editing.state, apikey: (e.target as HTMLInputElement).value } })}
               style={inputStyle}

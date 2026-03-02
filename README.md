@@ -1,14 +1,15 @@
-# ESP32 Uptime Kuma Status Indicator
+# ESP32 / ESP32-S3 Uptime Kuma Status Indicator
 
-A physical status indicator for [Uptime Kuma](https://github.com/louislam/uptime-kuma) powered by an ESP32 and three LEDs.
+A physical status indicator for [Uptime Kuma](https://github.com/louislam/uptime-kuma) powered by an ESP32 or ESP32-S3.
 
-The ESP32 polls one or more Uptime Kuma instances via their Prometheus `/metrics` endpoint and shows the aggregate monitor status on a green/red LED pair. A companion Progressive Web App (hosted on GitHub Pages) handles firmware flashing, WiFi provisioning, and device configuration — all from the browser over USB or local network.
+The device polls one or more Uptime Kuma instances via their Prometheus `/metrics` endpoint and shows the aggregate monitor status via LEDs. A companion Progressive Web App (hosted on GitHub Pages) handles firmware flashing, WiFi provisioning, and device configuration — all from the browser over USB or local network. The webapp automatically detects the connected chip family and selects the correct firmware and flash settings.
 
 ---
 
 ## Features
 
-- **3-LED status display** — green (all up), red (some down / unreachable / bad API key), onboard LED for connectivity state
+- **Multi-target support** — builds for ESP32 (GPIO LEDs) and ESP32-S3 (WS2812 RGB LED on GPIO 48)
+- **3-LED status display** — green (all up), red (some down / unreachable / bad API key), onboard LED for connectivity state (ESP32); equivalent RGB colours on ESP32-S3
 - **Multiple Uptime Kuma instances** — poll up to 8 instances simultaneously
 - **REST API** — full CRUD for instances, settings, and live monitor status
 - **AP mode fallback** — starts a `UptimeKumaMonitor` WiFi access point when no credentials are stored so you can configure it without a serial connection
@@ -22,6 +23,10 @@ The ESP32 polls one or more Uptime Kuma instances via their Prometheus `/metrics
 
 ## Hardware
 
+Two target boards are supported:
+
+### ESP32 (original)
+
 | Component | Details |
 |-----------|---------|
 | MCU | ESP32 (any variant with at least 4 MB flash) |
@@ -30,13 +35,23 @@ The ESP32 polls one or more Uptime Kuma instances via their Prometheus `/metrics
 | Onboard LED | GPIO 2 — connectivity state (slow blink = connecting, fast blink = AP mode) |
 | Button | GPIO 0 (BOOT) — hold 10 s for factory reset |
 
+### ESP32-S3
+
+| Component | Details |
+|-----------|---------|
+| MCU | ESP32-S3 (at least 4 MB flash) |
+| RGB LED | GPIO 48 — WS2812 single LED (green = all up, red = down, blue = connecting, white = identify/reset) |
+| Button | GPIO 0 (BOOT) — hold 10 s for factory reset |
+
+> **Note:** GPIO 22/23 are not usable on the ESP32-S3 (reserved for internal flash). The bootloader flash offset also differs: ESP32 = `0x1000`, ESP32-S3 = `0x0`. The webapp handles this automatically after chip detection.
+
 ---
 
 ## Quick Start
 
 ### 1. Flash the firmware
 
-Open the [GitHub Pages webapp](https://YOURUSER.github.io/Uptime-Kuma-ESP32-Statusindicator-new/) in Chrome, Edge, or Opera (Web Serial API required).
+Open the [GitHub Pages webapp](https://harmEllis.github.io/esp32-uptime-kuma-statusindicator/) in Chrome, Edge, or Opera (Web Serial API required).
 
 1. Click **Flash Firmware**
 2. Select a firmware release from the dropdown
@@ -46,7 +61,13 @@ Alternatively build from source (requires [ESP-IDF v5.3+](https://docs.espressif
 
 ```sh
 cd firmware
+# For ESP32:
 idf.py set-target esp32
+idf.py build
+idf.py -p /dev/ttyUSB0 flash
+
+# For ESP32-S3:
+idf.py set-target esp32s3
 idf.py build
 idf.py -p /dev/ttyUSB0 flash
 ```
@@ -81,7 +102,7 @@ After flashing, the onboard LED blinks fast — the device is in AP mode with SS
 ### 4. Add Uptime Kuma instances
 
 1. Go to **Instances → + Add Instance**
-2. Enter a name, the Uptime Kuma base URL (e.g. `https://kuma.example.com`), and optionally an API key
+2. Enter a name, the Uptime Kuma base URL (e.g. `https://kuma.example.com`), and an API key
 3. Click **Save** — the device starts polling immediately
 
 The green LED turns on when all monitors across all instances are up. The red LED indicates one or more monitors are down, the instance is unreachable, or the API key is invalid.
@@ -131,8 +152,12 @@ All settings are persisted to NVS flash and survive reboots. Default values:
 
 ```sh
 cd firmware
-idf.py set-target esp32
-idf.py build
+# ESP32:
+idf.py set-target esp32 && idf.py build
+idf.py -p /dev/ttyUSB0 flash monitor
+
+# ESP32-S3:
+idf.py set-target esp32s3 && idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
@@ -144,7 +169,7 @@ A `.devcontainer` is provided for VS Code Dev Containers (includes ESP-IDF 5.3).
 cd webapp
 npm install
 npm run dev
-# → http://localhost:5173/Uptime-Kuma-ESP32-Statusindicator-new/
+# → http://localhost:5173/esp32-uptime-kuma-statusindicator/
 ```
 
 ```sh
@@ -157,7 +182,7 @@ npm run build   # production build → dist/
 
 | Workflow | Trigger | Output |
 |----------|---------|--------|
-| `build-firmware.yml` | Push tag `v*` | GitHub Release with `firmware-esp32.bin`, `bootloader-esp32.bin`, `partition-table-esp32.bin` |
+| `build-firmware.yml` | Push tag `v*` | GitHub Release with 6 binaries: `firmware-esp32.bin`, `bootloader-esp32.bin`, `partition-table-esp32.bin` (and matching `-esp32s3` variants) |
 | `deploy-webapp.yml` | Push to `main` or release | Downloads latest release binaries, builds PWA, deploys to GitHub Pages |
 
 ---

@@ -1,11 +1,18 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const REQUIRED_FILES = [
-  "bootloader-esp32.bin",
-  "partition-table-esp32.bin",
-  "firmware-esp32.bin",
-];
+const CHIP_FILES = {
+  esp32: [
+    "bootloader-esp32.bin",
+    "partition-table-esp32.bin",
+    "firmware-esp32.bin",
+  ],
+  esp32s3: [
+    "bootloader-esp32s3.bin",
+    "partition-table-esp32s3.bin",
+    "firmware-esp32s3.bin",
+  ],
+};
 
 const MAX_RELEASES = Number.parseInt(
   process.env.MAX_FIRMWARE_RELEASES ?? "10",
@@ -86,8 +93,14 @@ for (const release of releases) {
     }
   }
 
-  const missing = REQUIRED_FILES.filter((name) => !assetsByName.has(name));
-  if (missing.length > 0) {
+  // Determine which chip families are fully present in this release
+  const availableChips = Object.entries(CHIP_FILES).filter(([, files]) =>
+    files.every((name) => assetsByName.has(name))
+  );
+
+  if (availableChips.length === 0) {
+    const allRequired = Object.values(CHIP_FILES).flat();
+    const missing = allRequired.filter((name) => !assetsByName.has(name));
     console.log(`Skipping ${tag}: missing ${missing.join(", ")}`);
     continue;
   }
@@ -95,22 +108,22 @@ for (const release of releases) {
   const tagDir = path.join(outputDir, tag);
   await mkdir(tagDir, { recursive: true });
 
-  for (const filename of REQUIRED_FILES) {
-    const asset = assetsByName.get(filename);
-    const destination = path.join(tagDir, filename);
-    console.log(`Downloading ${tag}/${filename}`);
-    await downloadAsset(asset.url, destination);
+  const manifestFiles = {};
+
+  for (const [chip, files] of availableChips) {
+    for (const filename of files) {
+      const asset = assetsByName.get(filename);
+      const destination = path.join(tagDir, filename);
+      console.log(`Downloading ${tag}/${filename} (${chip})`);
+      await downloadAsset(asset.url, destination);
+      manifestFiles[filename] = `firmware/${tag}/${filename}`;
+    }
   }
 
   manifest.push({
     tag,
     url: typeof release.html_url === "string" ? release.html_url : "",
-    files: Object.fromEntries(
-      REQUIRED_FILES.map((filename) => [
-        filename,
-        `firmware/${tag}/${filename}`,
-      ])
-    ),
+    files: manifestFiles,
   });
 }
 

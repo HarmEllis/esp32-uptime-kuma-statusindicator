@@ -13,7 +13,7 @@
 
 static const char *TAG = "monitor";
 
-#define RESPONSE_BUF_SIZE  8192
+#define RESPONSE_BUF_SIZE  32768
 #define FIRST_POLL_DELAY_S 5
 #define HTTP_TIMEOUT_MS    15000
 
@@ -92,6 +92,7 @@ typedef struct {
     char *buf;
     int len;
     int capacity;
+    bool truncated;
 } http_buf_t;
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
@@ -107,6 +108,11 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
                 memcpy(buf->buf + buf->len, evt->data, to_copy);
                 buf->len += to_copy;
                 buf->buf[buf->len] = '\0';
+            }
+            if (to_copy < evt->data_len && !buf->truncated) {
+                buf->truncated = true;
+                ESP_LOGW(TAG, "Response buffer full (%d bytes) — metrics may be truncated. "
+                              "Increase RESPONSE_BUF_SIZE.", buf->capacity);
             }
         }
         break;
@@ -139,6 +145,7 @@ static fetch_result_t fetch_metrics(const uptime_instance_t *inst)
         .buf = buf,
         .len = 0,
         .capacity = RESPONSE_BUF_SIZE,
+        .truncated = false,
     };
 
     esp_http_client_config_t config = {

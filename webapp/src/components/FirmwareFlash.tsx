@@ -1,21 +1,55 @@
-import { useState, useRef, useCallback, useEffect } from "preact/hooks";
+import { useState, useRef, useCallback, useEffect, useMemo } from "preact/hooks";
 import { RoutableProps } from "preact-router";
 import { ESPLoader, Transport, FlashOptions } from "esptool-js";
 import { BASE, nav } from "../utils/nav";
 
-/** ESP32 flash offsets */
+type ChipFamily = "esp32" | "esp32s3";
+
+const CHIP_CONFIG: Record<
+  ChipFamily,
+  {
+    bootloaderOffset: number;
+    flashMode: string;
+    flashFreq: string;
+    files: { bootloader: string; partitionTable: string; firmware: string };
+  }
+> = {
+  esp32: {
+    bootloaderOffset: 0x1000,
+    flashMode: "dio",
+    flashFreq: "40m",
+    files: {
+      bootloader: "bootloader-esp32.bin",
+      partitionTable: "partition-table-esp32.bin",
+      firmware: "firmware-esp32.bin",
+    },
+  },
+  esp32s3: {
+    bootloaderOffset: 0x0,
+    flashMode: "dio",
+    flashFreq: "80m",
+    files: {
+      bootloader: "bootloader-esp32s3.bin",
+      partitionTable: "partition-table-esp32s3.bin",
+      firmware: "firmware-esp32s3.bin",
+    },
+  },
+};
+
+/** Fixed flash offsets (partition table and firmware are the same for all targets) */
 const OFFSETS = {
-  bootloader: 0x1000,
   partitionTable: 0x8000,
   firmware: 0x10000,
 } as const;
 
 type FlashSource = "files" | "release";
-const REQUIRED_RELEASE_FILES = [
-  "bootloader-esp32.bin",
-  "partition-table-esp32.bin",
-  "firmware-esp32.bin",
-] as const;
+
+function detectChipFamily(chipName: string): ChipFamily | null {
+  const upper = chipName.toUpperCase();
+  if (upper.includes("ESP32-S3") || upper === "ESP32S3") return "esp32s3";
+  if (upper.startsWith("ESP32")) return "esp32";
+  return null;
+}
 
 interface FileSlot {
   label: string;
@@ -67,6 +101,8 @@ export function FirmwareFlash(_props: RoutableProps) {
   const [flashing, setFlashing] = useState(false);
   const [connected, setConnected] = useState(false);
   const [chipInfo, setChipInfo] = useState("");
+  const [chipFamily, setChipFamily] = useState<ChipFamily | null>(null);
+  const [chipFamilyOverride, setChipFamilyOverride] = useState<ChipFamily | null>(null);
   const [fileProgress, setFileProgress] = useState<number[]>([]);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [needsManualBoot, setNeedsManualBoot] = useState(false);
@@ -79,10 +115,14 @@ export function FirmwareFlash(_props: RoutableProps) {
   const transportRef = useRef<Transport | null>(null);
   const portRef = useRef<SerialPort | null>(null);
 
+  // Effective chip family: detected > manual override > default esp32
+  const effectiveChipFamily: ChipFamily =
+    chipFamily ?? chipFamilyOverride ?? "esp32";
+
   const [slots, setSlots] = useState<FileSlot[]>([
     {
       label: "Bootloader",
-      offset: OFFSETS.bootloader,
+      offset: CHIP_CONFIG.esp32.bootloaderOffset,
       file: null,
       data: null,
       required: true,
@@ -102,6 +142,14 @@ export function FirmwareFlash(_props: RoutableProps) {
       required: true,
     },
   ]);
+
+  // Update bootloader offset in slots when effective chip family changes
+  useEffect(() => {
+    const bootloaderOffset = CHIP_CONFIG[effectiveChipFamily].bootloaderOffset;
+    setSlots((prev) =>
+      prev.map((s, i) => (i === 0 ? { ...s, offset: bootloaderOffset } : s))
+    );
+  }, [effectiveChipFamily]);
 
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -155,9 +203,22 @@ export function FirmwareFlash(_props: RoutableProps) {
     try {
       const chip = await loader.main(mode);
       setChipInfo(chip);
+
+      // Detect chip family using canonical API, fall back to description string
+      const canonicalName: string =
+        (loader as unknown as { chip?: { CHIP_NAME?: string } }).chip?.CHIP_NAME ?? chip;
+      const family = detectChipFamily(canonicalName);
+      setChipFamily(family);
+      setChipFamilyOverride(null);
+
       setConnected(true);
       setStatus(`Connected: ${chip}`);
       appendLog(`Connected using ${label} mode.`);
+      if (family) {
+        appendLog(`Detected chip family: ${family}`);
+      } else {
+        appendLog(`Warning: unrecognised chip "${canonicalName}" — defaulting to ESP32 settings`);
+      }
       return true;
     } catch (err) {
       appendLog(`Connect attempt (${label}) failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -258,6 +319,8 @@ export function FirmwareFlash(_props: RoutableProps) {
     await closeTransport();
     setConnected(false);
     setChipInfo("");
+    setChipFamily(null);
+    setChipFamilyOverride(null);
     setStatus("");
   }
 
@@ -266,6 +329,26 @@ export function FirmwareFlash(_props: RoutableProps) {
       void closeTransport();
     };
   }, []);
+
+  /** Releases filtered to those that have all files for the effective chip family */
+  const filteredReleases = useMemo(() => {
+    if (!releases) return null;
+    const cfg = CHIP_CONFIG[effectiveChipFamily];
+    const needed = [cfg.files.bootloader, cfg.files.partitionTable, cfg.files.firmware];
+    return releases
+      .filter((r) => needed.every((name) => !!r.assets[name]))
+      .slice(0, 20);
+  }, [releases, effectiveChipFamily]);
+
+  // Reset selectedTag when the filtered release list changes (chip detection after load,
+  // or chip family switch)
+  useEffect(() => {
+    if (filteredReleases && filteredReleases.length > 0) {
+      setSelectedTag(filteredReleases[0].tag);
+    } else if (filteredReleases) {
+      setSelectedTag("");
+    }
+  }, [filteredReleases]);
 
   /** Fetch firmware versions hosted under /firmware on this site */
   async function fetchReleases() {
@@ -287,31 +370,25 @@ export function FirmwareFlash(_props: RoutableProps) {
             r.tag.startsWith("v") &&
             !!r.files
         )
-        .slice(0, 20)
         .map((r) => {
           const assets: Record<string, ReleaseAsset> = {};
-          for (const filename of REQUIRED_RELEASE_FILES) {
-            const filePath = r.files?.[filename];
-            if (!filePath) {
-              continue;
+          if (r.files) {
+            for (const [filename, filePath] of Object.entries(r.files)) {
+              assets[filename] = {
+                name: filename,
+                url: withBasePath(filePath),
+              };
             }
-            assets[filename] = {
-              name: filename,
-              url: withBasePath(filePath),
-            };
           }
           return {
             tag: r.tag,
             url: r.url ?? "",
             assets,
           };
-        })
-        .filter((release) =>
-          REQUIRED_RELEASE_FILES.every((filename) => !!release.assets[filename])
-        );
+        });
 
       setReleases(tags);
-      if (tags.length > 0) setSelectedTag(tags[0].tag);
+      // selectedTag will be set by the filteredReleases useEffect
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch releases");
     } finally {
@@ -350,6 +427,8 @@ export function FirmwareFlash(_props: RoutableProps) {
     setFlashing(true);
     setFileProgress([]);
 
+    const chipCfg = CHIP_CONFIG[effectiveChipFamily];
+
     try {
       let fileArray: { data: string; address: number }[];
 
@@ -380,7 +459,7 @@ export function FirmwareFlash(_props: RoutableProps) {
           return;
         }
 
-        const selectedRelease = releases?.find((r) => r.tag === selectedTag);
+        const selectedRelease = filteredReleases?.find((r) => r.tag === selectedTag);
         if (!selectedRelease) {
           setError("Release metadata not loaded. Click 'Load Hosted Releases' first.");
           setFlashing(false);
@@ -388,17 +467,17 @@ export function FirmwareFlash(_props: RoutableProps) {
         }
 
         const bootloader = await downloadReleaseAsset(
-          requireReleaseAsset(selectedRelease, "bootloader-esp32.bin")
+          requireReleaseAsset(selectedRelease, chipCfg.files.bootloader)
         );
         const partTable = await downloadReleaseAsset(
-          requireReleaseAsset(selectedRelease, "partition-table-esp32.bin")
+          requireReleaseAsset(selectedRelease, chipCfg.files.partitionTable)
         );
         const firmware = await downloadReleaseAsset(
-          requireReleaseAsset(selectedRelease, "firmware-esp32.bin")
+          requireReleaseAsset(selectedRelease, chipCfg.files.firmware)
         );
 
         fileArray = [
-          { data: bootloader, address: OFFSETS.bootloader },
+          { data: bootloader, address: chipCfg.bootloaderOffset },
           { data: partTable, address: OFFSETS.partitionTable },
           { data: firmware, address: OFFSETS.firmware },
         ];
@@ -412,8 +491,8 @@ export function FirmwareFlash(_props: RoutableProps) {
         fileArray,
         // Preserve flash size encoded in the binaries (supports both 4MB and 8MB builds)
         flashSize: "keep",
-        flashMode: "dio",
-        flashFreq: "80m",
+        flashMode: chipCfg.flashMode,
+        flashFreq: chipCfg.flashFreq,
         eraseAll: false,
         compress: true,
         reportProgress: (fileIndex: number, written: number, total: number) => {
@@ -456,6 +535,9 @@ export function FirmwareFlash(_props: RoutableProps) {
     !flashing &&
     (source === "release" ? !!selectedTag : allFilesSelected);
 
+  const chipDetected = connected && chipFamily !== null;
+  const chipUnrecognised = connected && chipFamily === null;
+
   return (
     <div style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
       <div
@@ -483,9 +565,10 @@ export function FirmwareFlash(_props: RoutableProps) {
       </div>
 
       <p style={{ color: "#94a3b8", marginBottom: "1.5rem" }}>
-        Flash firmware to your ESP32 via USB. Connect the device and click
-        Connect — auto-reset will be tried first. If that fails, hold BOOT,
-        tap RESET, release BOOT, then retry.
+        Flash firmware to your ESP32 or ESP32-S3 via USB. Connect the device
+        and click Connect — the chip is detected automatically. Auto-reset will
+        be tried first; if that fails, hold BOOT, tap RESET, release BOOT, then
+        retry.
       </p>
 
       {/* Step 1: Connect */}
@@ -543,29 +626,62 @@ export function FirmwareFlash(_props: RoutableProps) {
             </button>
           </div>
         ) : (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.75rem",
-            }}
-          >
-            <span style={{ color: "#22c55e" }}>Connected: {chipInfo}</span>
-            <button
-              onClick={handleDisconnect}
-              disabled={flashing}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div
               style={{
-                padding: "0.25rem 0.75rem",
-                background: "#374151",
-                color: "#94a3b8",
-                border: "1px solid #4b5563",
-                borderRadius: "6px",
-                cursor: flashing ? "not-allowed" : "pointer",
-                fontSize: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
               }}
             >
-              Disconnect
-            </button>
+              <span style={{ color: "#22c55e" }}>Connected: {chipInfo}</span>
+              <button
+                onClick={handleDisconnect}
+                disabled={flashing}
+                style={{
+                  padding: "0.25rem 0.75rem",
+                  background: "#374151",
+                  color: "#94a3b8",
+                  border: "1px solid #4b5563",
+                  borderRadius: "6px",
+                  cursor: flashing ? "not-allowed" : "pointer",
+                  fontSize: "0.85rem",
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
+            {chipDetected && (
+              <p style={{ margin: 0, fontSize: "0.85rem", color: "#94a3b8" }}>
+                {effectiveChipFamily === "esp32s3"
+                  ? "ESP32-S3 detected — bootloader offset 0x0"
+                  : "ESP32 detected — bootloader offset 0x1000"}
+              </p>
+            )}
+            {chipUnrecognised && (
+              <div>
+                <p style={{ margin: "0 0 0.4rem", fontSize: "0.85rem", color: "#f59e0b" }}>
+                  Unrecognised chip — using {(chipFamilyOverride ?? "esp32").toUpperCase()} settings. Override:
+                </p>
+                <select
+                  value={chipFamilyOverride ?? "esp32"}
+                  onChange={(e) =>
+                    setChipFamilyOverride((e.target as HTMLSelectElement).value as ChipFamily)
+                  }
+                  style={{
+                    padding: "0.3rem",
+                    background: "#0f172a",
+                    color: "#e2e8f0",
+                    border: "1px solid #334155",
+                    borderRadius: "6px",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  <option value="esp32">ESP32</option>
+                  <option value="esp32s3">ESP32-S3</option>
+                </select>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -653,12 +769,15 @@ export function FirmwareFlash(_props: RoutableProps) {
             {loadingReleases && (
               <p style={{ color: "#94a3b8" }}>Loading releases...</p>
             )}
-            {releases && releases.length === 0 && (
+            {filteredReleases && filteredReleases.length === 0 && (
               <p style={{ color: "#f59e0b" }}>
-                No hosted releases found. Build firmware and deploy webapp for a tag first.
+                No hosted releases found for {effectiveChipFamily.toUpperCase()}.{" "}
+                {releases && releases.length > 0
+                  ? "Build and release firmware for this chip target first."
+                  : "Build firmware and deploy webapp for a tag first."}
               </p>
             )}
-            {releases && releases.length > 0 && (
+            {filteredReleases && filteredReleases.length > 0 && (
               <div>
                 <label
                   style={{
@@ -685,7 +804,7 @@ export function FirmwareFlash(_props: RoutableProps) {
                     width: "100%",
                   }}
                 >
-                  {releases.map((r) => (
+                  {filteredReleases.map((r) => (
                     <option key={r.tag} value={r.tag}>
                       {r.tag}
                     </option>
@@ -698,8 +817,8 @@ export function FirmwareFlash(_props: RoutableProps) {
                     marginTop: "0.5rem",
                   }}
                 >
-                  Will download bootloader, partition table, and firmware from
-                  this hosted release.
+                  Will download bootloader, partition table, and firmware for{" "}
+                  {effectiveChipFamily.toUpperCase()} from this hosted release.
                 </p>
               </div>
             )}
