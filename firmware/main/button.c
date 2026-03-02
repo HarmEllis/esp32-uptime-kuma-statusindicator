@@ -60,6 +60,6 @@ static void button_task(void *arg)
 
 esp_err_t button_init(void)
 {
-    BaseType_t ret = xTaskCreate(button_task, "button", 2048, NULL, 3, NULL);
+    BaseType_t ret = xTaskCreate(button_task, "button", 3072, NULL, 3, NULL);
     return ret == pdPASS ? ESP_OK : ESP_FAIL;
 }
