@@ -503,7 +503,7 @@ esp_err_t http_server_start(void)
     config.max_uri_handlers = 24;
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.stack_size = 8192;
-    config.max_open_sockets = 4;
+    config.max_open_sockets = 7;
     config.lru_purge_enable = true;
 
     esp_err_t err = httpd_start(&s_server, &config);
