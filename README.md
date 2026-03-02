@@ -183,7 +183,7 @@ npm run build   # production build → dist/
 | Workflow | Trigger | Output |
 |----------|---------|--------|
 | `build-firmware.yml` | Push tag `v*` | GitHub Release with 6 binaries: `firmware-esp32.bin`, `bootloader-esp32.bin`, `partition-table-esp32.bin` (and matching `-esp32s3` variants) |
-| `deploy-webapp.yml` | Push to `main` or release | Downloads latest release binaries, builds PWA, deploys to GitHub Pages |
+| `deploy-webapp.yml` | Push tag `v*` | Downloads latest release binaries, builds PWA, deploys to GitHub Pages |
 
 ---
 
