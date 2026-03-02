@@ -29,5 +29,5 @@ export default defineConfig({
       },
     }),
   ],
-  base: "/Uptime-Kuma-ESP32-Statusindicator-new/",
+  base: "/esp32-uptime-kuma-statusindicator/",
 });

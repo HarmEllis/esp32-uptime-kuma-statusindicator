@@ -1,5 +1,5 @@
 {
-  "name": "ESP32 Uptime Kuma Status Indicator",
+  "name": "ESP32 / ESP32-S3 Uptime Kuma Status Indicator",
   "build": {
     "dockerfile": "Dockerfile"
   },

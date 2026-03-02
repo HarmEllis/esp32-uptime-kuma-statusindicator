@@ -213,11 +213,19 @@ static void handle_device_info(void)
     int pos = 0;
     data[pos++] = CMD_GET_DEVICE_INFO;
 
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+#define IMPROV_FW_NAME  "ESP32-S3 Uptime Monitor"
+#define IMPROV_HW_CHIP  "ESP32-S3"
+#else
+#define IMPROV_FW_NAME  "ESP32 Uptime Monitor"
+#define IMPROV_HW_CHIP  "ESP32"
+#endif
+
     const char *strings[] = {
-        "ESP32 Uptime Monitor",  /* firmware name */
-        "1.0.0",                 /* firmware version */
-        "ESP32",                 /* hardware chip */
-        "esp-uptimemonitor",     /* device name */
+        IMPROV_FW_NAME,      /* firmware name */
+        "1.0.0",             /* firmware version */
+        IMPROV_HW_CHIP,      /* hardware chip */
+        "esp-uptimemonitor", /* device name */
     };
 
     uint8_t total_len = 0;

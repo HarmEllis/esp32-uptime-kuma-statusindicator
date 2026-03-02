@@ -20,7 +20,7 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && inputs.release_tag || github.ref }}
 
-      - name: Build firmware
+      - name: Build firmware (ESP32)
         shell: bash
         run: |
           source /opt/esp/idf/export.sh
@@ -42,8 +42,39 @@ jobs:
             bootloader-esp32.bin
             partition-table-esp32.bin
 
+  build-esp32s3:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && inputs.release_tag || github.ref }}
+
+      - name: Build firmware (ESP32-S3)
+        shell: bash
+        run: |
+          source /opt/esp/idf/export.sh
+          cd firmware
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Rename binaries
+        run: |
+          cp firmware/build/esp32-uptimemonitor.bin firmware-esp32s3.bin
+          cp firmware/build/bootloader/bootloader.bin bootloader-esp32s3.bin
+          cp firmware/build/partition_table/partition-table.bin partition-table-esp32s3.bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-esp32s3
+          path: |
+            firmware-esp32s3.bin
+            bootloader-esp32s3.bin
+            partition-table-esp32s3.bin
+
   release:
-    needs: build
+    needs: [build, build-esp32s3]
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-latest
     permissions:
@@ -54,4 +85,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          files: firmware-esp32/*
+          files: |
+            firmware-esp32/*
+            firmware-esp32s3/*
