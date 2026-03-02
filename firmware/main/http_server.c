@@ -240,9 +240,9 @@ static esp_err_t instances_post_handler(httpd_req_t *req)
     const char *url  = cJSON_GetStringValue(cJSON_GetObjectItem(j, "url"));
     const char *apikey = cJSON_GetStringValue(cJSON_GetObjectItem(j, "apikey"));
 
-    if (!name || !url) {
+    if (!name || !url || !apikey || apikey[0] == '\0') {
         cJSON_Delete(j);
-        return send_error(req, 400, "Missing name or url");
+        return send_error(req, 400, "Missing name, url, or apikey");
     }
 
     uptime_instance_t inst = {0};
@@ -251,9 +251,7 @@ static esp_err_t instances_post_handler(httpd_req_t *req)
     }
     strncpy(inst.name, name, INSTANCE_NAME_LEN - 1);
     strncpy(inst.url, url, INSTANCE_URL_LEN - 1);
-    if (apikey) {
-        strncpy(inst.apikey, apikey, INSTANCE_APIKEY_LEN - 1);
-    }
+    strncpy(inst.apikey, apikey, INSTANCE_APIKEY_LEN - 1);
     cJSON_Delete(j);
 
     esp_err_t err = storage_add_instance(&inst);
@@ -288,9 +286,9 @@ static esp_err_t instances_put_handler(httpd_req_t *req)
     const char *url  = cJSON_GetStringValue(cJSON_GetObjectItem(j, "url"));
     const char *apikey = cJSON_GetStringValue(cJSON_GetObjectItem(j, "apikey"));
 
-    if (!name || !url) {
+    if (!name || !url || !apikey || apikey[0] == '\0') {
         cJSON_Delete(j);
-        return send_error(req, 400, "Missing name or url");
+        return send_error(req, 400, "Missing name, url, or apikey");
     }
 
     uptime_instance_t inst = {0};
@@ -299,9 +297,7 @@ static esp_err_t instances_put_handler(httpd_req_t *req)
     }
     strncpy(inst.name, name, INSTANCE_NAME_LEN - 1);
     strncpy(inst.url, url, INSTANCE_URL_LEN - 1);
-    if (apikey) {
-        strncpy(inst.apikey, apikey, INSTANCE_APIKEY_LEN - 1);
-    }
+    strncpy(inst.apikey, apikey, INSTANCE_APIKEY_LEN - 1);
     cJSON_Delete(j);
 
     esp_err_t err = storage_update_instance(id, &inst);

@@ -102,7 +102,7 @@ After flashing, the onboard LED blinks fast — the device is in AP mode with SS
 ### 4. Add Uptime Kuma instances
 
 1. Go to **Instances → + Add Instance**
-2. Enter a name, the Uptime Kuma base URL (e.g. `https://kuma.example.com`), and optionally an API key
+2. Enter a name, the Uptime Kuma base URL (e.g. `https://kuma.example.com`), and an API key
 3. Click **Save** — the device starts polling immediately
 
 The green LED turns on when all monitors across all instances are up. The red LED indicates one or more monitors are down, the instance is unreachable, or the API key is invalid.
