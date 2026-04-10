@@ -273,7 +273,27 @@ static void monitor_task(void *arg)
             xSemaphoreGive(s_mutex);
             update_led_state();
         } else if (!wifi_is_connected()) {
-            vTaskDelay(pdMS_TO_TICKS(5000));
+            if (storage_has_wifi_creds()) {
+                ESP_LOGI(TAG, "WiFi not connected, attempting async reconnect...");
+                esp_err_t rc = wifi_reconnect_async();
+                if (rc != ESP_OK) {
+                    /* Driver not ready or no credentials — restore AP mode */
+                    ESP_LOGW(TAG, "wifi_reconnect_async failed (%s), restoring AP mode",
+                             esp_err_to_name(rc));
+                    wifi_init_ap();
+                    vTaskDelay(pdMS_TO_TICKS(60000));
+                } else {
+                    /* Wait for the connection attempt to settle */
+                    vTaskDelay(pdMS_TO_TICKS(25000));
+                    if (!wifi_is_connected()) {
+                        ESP_LOGW(TAG, "Reconnect did not succeed, restoring AP mode");
+                        wifi_init_ap();
+                        vTaskDelay(pdMS_TO_TICKS(60000)); /* pause before next retry */
+                    }
+                }
+            } else {
+                vTaskDelay(pdMS_TO_TICKS(5000));
+            }
             continue;
         } else {
             ESP_LOGI(TAG, "Polling %d instance(s)...", count);

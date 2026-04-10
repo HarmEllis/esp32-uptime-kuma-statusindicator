@@ -21,5 +21,9 @@ void wifi_get_ip_str(char *buf, size_t len);
 /** Get current RSSI. Returns 0 if not connected. */
 int8_t wifi_get_rssi(void);
 
-/** Disconnect and reconnect with new credentials (already stored in NVS) */
+/** Disconnect and reconnect with new credentials (already stored in NVS). Blocking. */
 esp_err_t wifi_reconnect(void);
+
+/** Non-blocking reconnect: resets retry counter and triggers connection via event handler.
+ *  Returns immediately; connection result is reflected in wifi_is_connected() after ~20s. */
+esp_err_t wifi_reconnect_async(void);
